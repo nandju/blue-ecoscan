@@ -17,6 +17,7 @@ interface PhotoAnalysisProps {
 export function PhotoAnalysis({ onAnalysisComplete, isAnalyzing, setIsAnalyzing }: PhotoAnalysisProps) {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
@@ -24,6 +25,7 @@ export function PhotoAnalysis({ onAnalysisComplete, isAnalyzing, setIsAnalyzing 
     const file = event.target.files?.[0]
     if (file) {
       setSelectedFile(file)
+      setError(null)
       const reader = new FileReader()
       reader.onloadend = () => {
         setImagePreview(reader.result as string)
@@ -33,9 +35,13 @@ export function PhotoAnalysis({ onAnalysisComplete, isAnalyzing, setIsAnalyzing 
   }, [])
 
   const handleAnalyze = useCallback(async () => {
-    if (!imagePreview || !selectedFile) return
+    if (!imagePreview || !selectedFile) {
+      setError('Please select an image to analyze')
+      return
+    }
     
     setIsAnalyzing(true)
+    setError(null)
     try {
       // Create FormData and send to API
       const formData = new FormData()
@@ -52,13 +58,21 @@ export function PhotoAnalysis({ onAnalysisComplete, isAnalyzing, setIsAnalyzing 
       
       const apiResponse = await response.json()
       
+      // Extract predictions and handle empty results
+      const predictions = apiResponse.predictions || []
+      if (predictions.length === 0) {
+        setError('No waste objects detected in the image. Try uploading a clearer image.')
+        return
+      }
+      
       // Transform predictions into enriched data
-      const objects = analyzeWaste(apiResponse.predictions)
+      const objects = analyzeWaste(predictions)
       const summary = generateStats(objects)
       
       onAnalysisComplete(objects, summary, imagePreview)
     } catch (error) {
       console.error('[v0] Analysis error:', error)
+      setError('Failed to analyze image. Please try again.')
     } finally {
       setIsAnalyzing(false)
     }
@@ -67,6 +81,7 @@ export function PhotoAnalysis({ onAnalysisComplete, isAnalyzing, setIsAnalyzing 
   const clearImage = () => {
     setImagePreview(null)
     setSelectedFile(null)
+    setError(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
     if (cameraInputRef.current) cameraInputRef.current.value = ''
   }
@@ -152,6 +167,13 @@ export function PhotoAnalysis({ onAnalysisComplete, isAnalyzing, setIsAnalyzing 
           className="hidden"
           onChange={handleFileSelect}
         />
+
+        {/* Error Message */}
+        {error && (
+          <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+            <p className="text-sm text-destructive">{error}</p>
+          </div>
+        )}
 
         {/* Analyze Button */}
         <Button

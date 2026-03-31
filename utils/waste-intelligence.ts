@@ -9,50 +9,78 @@ interface RoboflowPrediction {
   class: string
 }
 
-interface RoboflowResponse {
-  predictions: RoboflowPrediction[]
+export function normalizeClassName(name: string): string {
+  const map: Record<string, string> = {
+    "Transparet Plastic Bottle": "Transparent Plastic Bottle",
+    "Plastic Bottle": "Transparent Plastic Bottle",
+    "Transparent Plastic Bottle": "Transparent Plastic Bottle",
+    "Plastic Bag": "Plastic Bag",
+    "Plastic Cup": "Plastic Cup",
+    "Plastic Container": "Plastic Container",
+  }
+
+  return map[name] || name
+}
+
+export function getPlasticType(name: string): 'PET' | 'HDPE' | 'LDPE' | 'PP' | 'PS' | 'PVC' | 'Other' {
+  if (name.toLowerCase().includes("bottle")) return "PET"
+  if (name.toLowerCase().includes("bag")) return "LDPE"
+  if (name.toLowerCase().includes("cup")) return "PP"
+  if (name.toLowerCase().includes("container")) return "HDPE"
+  return "Other"
+}
+
+export function isRecyclable(name: string): boolean {
+  return name.toLowerCase().includes("bottle") || name.toLowerCase().includes("container")
+}
+
+export function estimateWeight(pred: RoboflowPrediction): number {
+  const area = pred.width * pred.height
+
+  if (area > 500000) return 30
+  if (area > 200000) return 20
+  return 10
+}
+
+export function estimateState(confidence: number): 'Good' | 'Average' | 'Poor' | 'Critical' {
+  if (confidence > 0.85) return "Good"
+  if (confidence > 0.6) return "Average"
+  if (confidence > 0.4) return "Poor"
+  return "Critical"
+}
+
+export function estimateImpact(name: string): string {
+  if (name.toLowerCase().includes("bottle")) {
+    return "Pollution plastique recyclable, impact modéré"
+  }
+  if (name.toLowerCase().includes("bag")) {
+    return "Fort impact environnemental, non biodégradable"
+  }
+  if (name.toLowerCase().includes("cup")) {
+    return "Impact modéré, recyclable dans certaines conditions"
+  }
+  if (name.toLowerCase().includes("container")) {
+    return "Impact variable, vérifier recyclabilité locale"
+  }
+  return "Impact environnemental inconnu"
 }
 
 export function analyzeWaste(predictions: RoboflowPrediction[]): DetectedObject[] {
-  return predictions.map(prediction => {
-    const name = extractName(prediction.class)
-    const plasticType = getPlasticType(prediction.class)
-    const recyclable = isRecyclable(prediction.class)
-    const weight = estimateWeight(prediction.width, prediction.height, prediction.class)
-    const state = estimateState(prediction.confidence)
-    const impact = estimateImpact(recyclable, weight, state)
+  return predictions.map((pred) => {
+    const cleanName = normalizeClassName(pred.class)
 
     return {
       id: crypto.randomUUID(),
-      name,
-      brand: extractBrand(prediction.class),
-      plasticType,
-      shape: extractShape(prediction.class),
-      recyclable,
-      condition: state,
-      estimatedWeight: weight,
-      impact,
+      name: cleanName,
+      brand: null,
+      plasticType: getPlasticType(cleanName),
+      shape: extractShape(cleanName),
+      recyclable: isRecyclable(cleanName),
+      condition: estimateState(pred.confidence),
+      estimatedWeight: estimateWeight(pred),
+      impact: estimateImpact(cleanName),
     }
   })
-}
-
-function extractName(className: string): string {
-  const nameMap: Record<string, string> = {
-    'Transparent Plastic Bottle': 'Plastic Water Bottle',
-    'Plastic Bag': 'Shopping Bag',
-    'Plastic Cup': 'Plastic Cup',
-    'Plastic Container': 'Food Container',
-    'Plastic Bottle': 'Plastic Bottle',
-    'PET Bottle': 'PET Bottle',
-    'HDPE Container': 'HDPE Container'
-  }
-  return nameMap[className] || className
-}
-
-function extractBrand(className: string): string | null {
-  const brandKeywords = ['Coca-Cola', 'Pepsi', 'Nestle', 'Danone', 'Awa']
-  const found = brandKeywords.find(brand => className.toLowerCase().includes(brand.toLowerCase()))
-  return found || null
 }
 
 function extractShape(className: string): string {
@@ -63,82 +91,17 @@ function extractShape(className: string): string {
   return 'Other'
 }
 
-function getPlasticType(className: string): 'PET' | 'HDPE' | 'LDPE' | 'PP' | 'PS' | 'PVC' | 'Other' {
-  const classLower = className.toLowerCase()
-  
-  if (classLower.includes('pet') || classLower.includes('bottle')) return 'PET'
-  if (classLower.includes('hdpe') || classLower.includes('container')) return 'HDPE'
-  if (classLower.includes('ldpe') || classLower.includes('bag')) return 'LDPE'
-  if (classLower.includes('pp') || classLower.includes('cup')) return 'PP'
-  if (classLower.includes('ps')) return 'PS'
-  if (classLower.includes('pvc')) return 'PVC'
-  
-  return 'Other'
-}
-
-function isRecyclable(className: string): boolean {
-  const nonRecyclableClasses = ['plastic bag', 'wrapper', 'film']
-  const classLower = className.toLowerCase()
-  
-  return !nonRecyclableClasses.some(nonRecyclable => classLower.includes(nonRecyclable))
-}
-
-function estimateWeight(width: number, height: number, className: string): number {
-  const area = width * height
-  const classLower = className.toLowerCase()
-  
-  let baseWeight = 0
-  
-  if (classLower.includes('bottle')) {
-    baseWeight = Math.max(10, Math.min(50, area / 1000))
-  } else if (classLower.includes('bag')) {
-    baseWeight = Math.max(2, Math.min(15, area / 2000))
-  } else if (classLower.includes('cup')) {
-    baseWeight = Math.max(5, Math.min(25, area / 1500))
-  } else if (classLower.includes('container')) {
-    baseWeight = Math.max(15, Math.min(100, area / 800))
-  } else {
-    baseWeight = Math.max(5, Math.min(50, area / 1200))
-  }
-  
-  return Math.round(baseWeight)
-}
-
-function estimateState(confidence: number): 'Good' | 'Average' | 'Poor' | 'Critical' {
-  if (confidence >= 0.9) return 'Good'
-  if (confidence >= 0.75) return 'Average'
-  if (confidence >= 0.6) return 'Poor'
-  return 'Critical'
-}
-
-function estimateImpact(recyclable: boolean, weight: number, state: 'Good' | 'Average' | 'Poor' | 'Critical'): string {
-  if (recyclable && state === 'Good') {
-    return 'Low environmental impact - can be recycled efficiently'
-  } else if (recyclable && state === 'Average') {
-    return 'Moderate environmental impact - recyclable with proper processing'
-  } else if (recyclable) {
-    return 'High environmental impact - recycling may be difficult due to condition'
-  } else if (weight < 10) {
-    return 'Low environmental impact - small non-recyclable item'
-  } else if (weight < 30) {
-    return 'Moderate environmental impact - medium non-recyclable item'
-  } else {
-    return 'High environmental impact - large non-recyclable item contributing to waste'
-  }
-}
-
-export function generateStats(objects: DetectedObject[]): AnalysisSummary {
-  const totalObjects = objects.length
-  const totalWeight = objects.reduce((sum, obj) => sum + obj.estimatedWeight, 0)
-  const recyclableWeight = objects
-    .filter(obj => obj.recyclable)
-    .reduce((sum, obj) => sum + obj.estimatedWeight, 0)
-  const nonRecyclableWeight = totalWeight - recyclableWeight
+export function generateStats(data: DetectedObject[]): AnalysisSummary {
+  const recyclableCount = data.filter(d => d.recyclable).length
+  const totalWeight = data.reduce((sum, d) => sum + d.estimatedWeight, 0)
+  const recyclableWeight = data
+    .filter(d => d.recyclable)
+    .reduce((sum, d) => sum + d.estimatedWeight, 0)
 
   return {
-    totalObjects,
+    totalObjects: data.length,
     totalWeight,
     recyclableWeight,
-    nonRecyclableWeight,
+    nonRecyclableWeight: totalWeight - recyclableWeight,
   }
 }
