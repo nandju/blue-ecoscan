@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Spinner } from '@/components/ui/spinner'
 import { Camera, Upload, Scan, X, ImageIcon } from 'lucide-react'
 import type { DetectedObject, AnalysisSummary } from '@/lib/types'
+import { analyzeWaste, generateStats } from '@/utils/waste-intelligence'
 
 interface PhotoAnalysisProps {
   onAnalysisComplete: (objects: DetectedObject[], summary: AnalysisSummary, imageUrl: string) => void
@@ -13,88 +14,16 @@ interface PhotoAnalysisProps {
   setIsAnalyzing: (value: boolean) => void
 }
 
-// Mock AI analysis function - in production this would call a real AI endpoint
-async function analyzeImage(): Promise<{ objects: DetectedObject[], summary: AnalysisSummary }> {
-  await new Promise(resolve => setTimeout(resolve, 2500))
-  
-  const mockObjects: DetectedObject[] = [
-    {
-      id: crypto.randomUUID(),
-      name: 'Awa Water Bottle',
-      brand: 'Awa',
-      plasticType: 'PET',
-      shape: 'Bottle',
-      recyclable: true,
-      condition: 'Average',
-      estimatedWeight: 15,
-    },
-    {
-      id: crypto.randomUUID(),
-      name: 'Coca-Cola Bottle',
-      brand: 'Coca-Cola',
-      plasticType: 'PET',
-      shape: 'Bottle',
-      recyclable: true,
-      condition: 'Good',
-      estimatedWeight: 18,
-    },
-    {
-      id: crypto.randomUUID(),
-      name: 'Shopping Bag',
-      brand: null,
-      plasticType: 'LDPE',
-      shape: 'Bag',
-      recyclable: false,
-      condition: 'Poor',
-      estimatedWeight: 5,
-    },
-    {
-      id: crypto.randomUUID(),
-      name: 'Yogurt Cup',
-      brand: 'Danone',
-      plasticType: 'PP',
-      shape: 'Cup',
-      recyclable: true,
-      condition: 'Average',
-      estimatedWeight: 8,
-    },
-    {
-      id: crypto.randomUUID(),
-      name: 'Food Container',
-      brand: null,
-      plasticType: 'HDPE',
-      shape: 'Container',
-      recyclable: true,
-      condition: 'Good',
-      estimatedWeight: 25,
-    },
-  ]
-
-  const recyclableWeight = mockObjects
-    .filter(obj => obj.recyclable)
-    .reduce((sum, obj) => sum + obj.estimatedWeight, 0)
-  
-  const totalWeight = mockObjects.reduce((sum, obj) => sum + obj.estimatedWeight, 0)
-
-  return {
-    objects: mockObjects,
-    summary: {
-      totalObjects: mockObjects.length,
-      totalWeight,
-      recyclableWeight,
-      nonRecyclableWeight: totalWeight - recyclableWeight,
-    },
-  }
-}
-
 export function PhotoAnalysis({ onAnalysisComplete, isAnalyzing, setIsAnalyzing }: PhotoAnalysisProps) {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
+      setSelectedFile(file)
       const reader = new FileReader()
       reader.onloadend = () => {
         setImagePreview(reader.result as string)
@@ -104,21 +33,40 @@ export function PhotoAnalysis({ onAnalysisComplete, isAnalyzing, setIsAnalyzing 
   }, [])
 
   const handleAnalyze = useCallback(async () => {
-    if (!imagePreview) return
+    if (!imagePreview || !selectedFile) return
     
     setIsAnalyzing(true)
     try {
-      const result = await analyzeImage()
-      onAnalysisComplete(result.objects, result.summary, imagePreview)
+      // Create FormData and send to API
+      const formData = new FormData()
+      formData.append('image', selectedFile)
+      
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        body: formData,
+      })
+      
+      if (!response.ok) {
+        throw new Error('Analysis failed')
+      }
+      
+      const apiResponse = await response.json()
+      
+      // Transform predictions into enriched data
+      const objects = analyzeWaste(apiResponse.predictions)
+      const summary = generateStats(objects)
+      
+      onAnalysisComplete(objects, summary, imagePreview)
     } catch (error) {
       console.error('[v0] Analysis error:', error)
     } finally {
       setIsAnalyzing(false)
     }
-  }, [imagePreview, onAnalysisComplete, setIsAnalyzing])
+  }, [imagePreview, selectedFile, onAnalysisComplete, setIsAnalyzing])
 
   const clearImage = () => {
     setImagePreview(null)
+    setSelectedFile(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
     if (cameraInputRef.current) cameraInputRef.current.value = ''
   }
@@ -209,7 +157,7 @@ export function PhotoAnalysis({ onAnalysisComplete, isAnalyzing, setIsAnalyzing 
         <Button
           className="w-full h-12 bg-gradient-to-r from-primary to-accent hover:opacity-90 transition-opacity text-primary-foreground font-medium"
           onClick={handleAnalyze}
-          disabled={!imagePreview || isAnalyzing}
+          disabled={!imagePreview || !selectedFile || isAnalyzing}
         >
           {isAnalyzing ? (
             <span className="flex items-center gap-2">

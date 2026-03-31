@@ -14,6 +14,7 @@ export interface DetectedObject {
   recyclable: boolean
   condition: 'Good' | 'Average' | 'Poor' | 'Critical'
   estimatedWeight: number // in grams
+  impact: string // environmental impact description
 }
 
 export interface AnalysisSummary {

@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Sparkles, Recycle, Scale, Package, AlertCircle } from 'lucide-react'
+import { Sparkles, Recycle, Scale, Package, AlertCircle, Leaf } from 'lucide-react'
 import type { DetectedObject, AnalysisSummary } from '@/lib/types'
 
 interface AIResultsProps {
@@ -125,6 +125,10 @@ export function AIResults({ objects, summary }: AIResultsProps) {
                   <Badge variant="secondary" className="text-xs">
                     ~{obj.estimatedWeight}g
                   </Badge>
+                </div>
+                <div className="mt-3 flex items-start gap-2">
+                  <Leaf className="w-3 h-3 text-muted-foreground mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-muted-foreground leading-relaxed">{obj.impact}</p>
                 </div>
               </div>
             ))}
